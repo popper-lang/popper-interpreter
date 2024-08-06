@@ -2,20 +2,11 @@ extern {
     func printf(s: string 0...) : int
 };
 
-struct Hello {
-    a = int,
-    b = int
-}
-
-func initStruct(h: *int): unit {
-    @h = 2;
-}
-
-
 func main(): int {
-    let h = 3;
-    initStruct(ref h);
-
-    printf("Hello, World! %d\n", h);
+    let h = 3 + 1 - 2;
+    let c = ref h;
+    @c = 5;
+    @c = @c + 1;
+    printf("Hello, World! %p\n", c);
     return 0;
 }

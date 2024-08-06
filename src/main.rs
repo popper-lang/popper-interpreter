@@ -1,6 +1,6 @@
 #![allow(clippy::upper_case_acronyms)]
 use std::io::Write;
-use popper_compiler::{compile_to_llvm, execute_llvm, compile_to_mir};
+use popper_compiler::{compile_to_llvm, compile_to_mirage, execute_llvm};
 use popper_compiler::get_ast;
 use popper_compiler::check_program;
 use clap::{Parser, Subcommand};
@@ -32,7 +32,7 @@ enum Commands {
         file: std::path::PathBuf
     },
     /// compile to the Popper MIR
-    Mir {
+    Mirage {
         #[arg(value_hint = clap::ValueHint::DirPath)]
         file: std::path::PathBuf,
 
@@ -119,7 +119,7 @@ fn main() {
                 eprintln!("Unable to parse file")
             }
         },
-        Commands::Mir {
+        Commands::Mirage {
             file, output
         } => {
             let string_file = file.to_str().expect("Unable to get a str");
@@ -127,8 +127,7 @@ fn main() {
             let ast = get_ast(content.as_str(), string_file);
             if let Some(a) = ast {
                 if check_program(a.clone(), content.as_str(), string_file) {
-                    let mir = compile_to_mir(a, string_file);
-                    let res = mir.print_to_string();
+                    let res = compile_to_mirage(a, string_file);
                     if let Some(out) = output {
                         std::fs::File::open(out)
                             .expect("File Not Found")
@@ -152,8 +151,7 @@ fn main() {
             let ast = get_ast(content.as_str(), string_file);
             if let Some(a) = ast {
                 if check_program(a.clone(), content.as_str(), string_file) {
-                    let mir = compile_to_mir(a, string_file);
-                    let res = compile_to_llvm(mir, string_file);
+                    let res = compile_to_llvm(a, string_file);
                     if let Some(out) = output {
                         std::fs::File::open(out)
                             .expect("File Not Found")
@@ -178,8 +176,7 @@ fn main() {
             let ast = get_ast(content.as_str(), string_file);
             if let Some(a) = ast {
                 if check_program(a.clone(), content.as_str(), string_file) {
-                    let mir = compile_to_mir(a, string_file);
-                    let res = compile_to_llvm(mir, string_file);
+                    let res = compile_to_llvm(a, string_file);
                     let target = target.unwrap_or(std::path::PathBuf::from("./target_popper"));
                     execute_llvm(res, string_file.to_string(), target.to_str().unwrap().to_string(), debug);
                 } else {
@@ -201,3 +198,4 @@ fn main() {
 
 
 }
+

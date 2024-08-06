@@ -3,9 +3,7 @@ name = "popper_codegen"
 version = "0.1.0"
 edition = "2021"
 
-
 [dependencies]
-popper_llvm = { path = "../popper_llvm" }
-popper_common = { path = "../popper_common" , features = ["ast_path_to_path", "hash"]}
-popper_mir = { path = "../popper_mir" }
-lazy_static = "1.4.0"
+#mirage = { git = "https://github.com/popper-lang/mirage.git", branch = "main" }
+mirage = { path = "../../../mirage" }
+popper_ast = { path = "../popper_ast", features = ["extra-trait"] }

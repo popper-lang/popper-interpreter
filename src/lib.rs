@@ -1,12 +1,11 @@
 use std::process::Output;
 
-use popper_codegen::compiler::Compiler;
+use popper_codegen::Compiler;
 use popper_parser::parser::parse;
 use popper_ast::Statement;
 // use popper_codegen::compiler::Compiler;
 use popper_semantic_analyzer::analyze;
 use popper_error::generate_color;
-use popper_mir::{compile, Program};
 use std::path::Path;
 // use popper_inkwell::compiler::Compiler as InkwellCompiler;
 // use popper_inkwell::Context;
@@ -61,11 +60,6 @@ pub fn check_program(ast: Vec<Statement>, source: &str, file_name: &str) -> bool
 
 }
 
-pub fn compile_to_mir(ast: Vec<Statement>, _file_name: &str) -> Program {
-    compile(ast)
-}
-
-
 // pub fn compile_to_inkwell_llvm<'a>(mir: Module) -> (String, Vec<String>) {
 //     let context = Context::create();
 //     let mut compiler = InkwellCompiler::new(mir, &context);
@@ -73,10 +67,17 @@ pub fn compile_to_mir(ast: Vec<Statement>, _file_name: &str) -> Program {
 //     (compiler.build(), compiler.get_used_cdylibs())
 // }
 
-pub fn compile_to_llvm(mir: Program, file: &str) -> String {
-    let mut compiler = Compiler::new(mir, file);
-    compiler.compile_program();
+pub fn compile_to_mirage(ast: Vec<Statement>, file_name: &str) -> String {
+    let mut compiler = Compiler::new(ast, file_name);
+    compiler.compile();
     compiler.print_to_string()
+
+}
+
+pub fn compile_to_llvm(ast: Vec<Statement>, file_name: &str) -> String {
+    let mut compiler = Compiler::new(ast, file_name);
+    compiler.compile();
+    compiler.compile_to_llvm()
 }
 
 pub fn execute_llvm(llvm: String, file_name: String, target_path: String, debug: bool) {
