@@ -1,0 +1,24 @@
+
+
+
+func<T> hello (a: T) -> int {
+    return a + 1;
+}
+
+
+struct{T} List {
+    elt = T,
+    length = Int
+}
+
+
+func main() {
+      let d: List<Int> = List {
+          elt = 3,
+          length = 0 
+      }
+}
+
+
+
+

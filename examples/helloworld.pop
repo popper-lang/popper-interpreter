@@ -1,12 +1,14 @@
 extern {
-    func printf(s: string 0...) : int
+    func printf(s: string 0 ...): int
 };
 
+struct Hello {
+  a = int, 
+  b = int
+}
+
 func main(): int {
-    let h = 3 + 1 - 2;
-    let c = ref h;
-    @c = 5;
-    @c = @c + 1;
-    printf("Hello, World! %p\n", c);
+    let h =   init Hello {a = 1, b = 2};
+    printf("%d", {h}.a);
     return 0;
 }

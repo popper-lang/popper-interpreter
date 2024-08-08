@@ -1,16 +1,15 @@
 #![allow(clippy::upper_case_acronyms)]
-use std::io::Write;
-use popper_compiler::{compile_to_llvm, compile_to_mirage, execute_llvm};
-use popper_compiler::get_ast;
-use popper_compiler::check_program;
 use clap::{Parser, Subcommand};
-
+use popper_compiler::check_program;
+use popper_compiler::get_ast;
+use popper_compiler::{compile_to_llvm, compile_to_mirage, execute_llvm};
+use std::io::Write;
 
 #[derive(Parser, Debug)]
 #[command(author = "NightProg", version = "1.0.0", about = "The Popper CLI", long_about = None)]
 struct Cli {
     #[command(subcommand)]
-    command: Commands
+    command: Commands,
 }
 
 #[derive(Subcommand, Debug)]
@@ -24,12 +23,12 @@ enum Commands {
         file: std::path::PathBuf,
 
         #[arg(long, short, value_hint = clap::ValueHint::DirPath)]
-        output: Option<std::path::PathBuf>
+        output: Option<std::path::PathBuf>,
     },
     // check a file
     Check {
         #[arg(value_hint = clap::ValueHint::DirPath)]
-        file: std::path::PathBuf
+        file: std::path::PathBuf,
     },
     /// compile to the Popper MIR
     Mirage {
@@ -46,6 +45,9 @@ enum Commands {
 
         #[arg(short, long, value_hint = clap::ValueHint::DirPath)]
         output: Option<std::path::PathBuf>,
+
+        #[arg(short, long)]
+        debug: bool,
     },
 
     /// Run a popper file
@@ -58,9 +60,8 @@ enum Commands {
 
         // #[arg(short, long)]
         // inkwell: bool,
-
         #[arg(short, long)]
-        debug: bool
+        debug: bool,
     },
 
     Clean {
@@ -68,17 +69,15 @@ enum Commands {
         target: Option<std::path::PathBuf>,
 
         #[arg(short = 'l', long)]
-        only_libs: bool
-    }
+        only_libs: bool,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Parse {
-            json, file, output
-        } => {
+        Commands::Parse { json, file, output } => {
             let string_file = file.to_str().expect("Unable to get a str");
             let content = std::fs::read_to_string(string_file).expect("File not found");
             let ast = get_ast(content.as_str(), string_file);
@@ -93,19 +92,14 @@ fn main() {
                     } else {
                         println!("{}", s);
                     };
-
                 } else {
                     println!("{:#?}", a)
                 }
             } else {
                 eprintln!("Unable to parse file")
             }
-
-
-        },
-        Commands::Check {
-            file
-        } => {
+        }
+        Commands::Check { file } => {
             let string_file = file.to_str().expect("Unable to get a str");
             let content = std::fs::read_to_string(string_file).expect("File not found");
             let ast = get_ast(content.as_str(), string_file);
@@ -118,10 +112,8 @@ fn main() {
             } else {
                 eprintln!("Unable to parse file")
             }
-        },
-        Commands::Mirage {
-            file, output
-        } => {
+        }
+        Commands::Mirage { file, output } => {
             let string_file = file.to_str().expect("Unable to get a str");
             let content = std::fs::read_to_string(string_file).expect("File not found");
             let ast = get_ast(content.as_str(), string_file);
@@ -142,16 +134,18 @@ fn main() {
             } else {
                 eprintln!("Unable to parse file")
             }
-        },
+        }
         Commands::LLVM {
-            file, output
+            file,
+            output,
+            debug,
         } => {
             let string_file = file.to_str().expect("Unable to get a str");
             let content = std::fs::read_to_string(string_file).expect("File not found");
             let ast = get_ast(content.as_str(), string_file);
             if let Some(a) = ast {
                 if check_program(a.clone(), content.as_str(), string_file) {
-                    let res = compile_to_llvm(a, string_file);
+                    let res = compile_to_llvm(a, string_file, debug);
                     if let Some(out) = output {
                         std::fs::File::open(out)
                             .expect("File Not Found")
@@ -160,42 +154,46 @@ fn main() {
                     } else {
                         println!("{}", res);
                     };
-
                 } else {
                     println!("Program is invalid");
                 }
             } else {
                 eprintln!("Unable to parse file")
             }
-        },
+        }
         Commands::Run {
-            file, target, debug
+            file,
+            target,
+            debug,
         } => {
             let string_file = file.to_str().expect("Unable to get a str");
             let content = std::fs::read_to_string(string_file).expect("File not found");
             let ast = get_ast(content.as_str(), string_file);
             if let Some(a) = ast {
                 if check_program(a.clone(), content.as_str(), string_file) {
-                    let res = compile_to_llvm(a, string_file);
+                    let res = compile_to_llvm(a, string_file, debug);
                     let target = target.unwrap_or(std::path::PathBuf::from("./target_popper"));
-                    execute_llvm(res, string_file.to_string(), target.to_str().unwrap().to_string(), debug);
+                    execute_llvm(
+                        res,
+                        string_file.to_string(),
+                        target.to_str().unwrap().to_string(),
+                        debug,
+                    );
                 } else {
                     println!("Program is invalid");
                 }
             } else {
                 eprintln!("Unable to parse file")
             }
-        },
-        Commands::Clean { target , only_libs} => {
+        }
+        Commands::Clean { target, only_libs } => {
             let target = target.unwrap_or(std::path::PathBuf::from("./target_popper"));
             if only_libs {
-                std::fs::remove_dir_all(target.join("libs")).expect("Unable to remove target directory");
+                std::fs::remove_dir_all(target.join("libs"))
+                    .expect("Unable to remove target directory");
             } else {
                 std::fs::remove_dir_all(target).expect("Unable to remove target directory");
             }
         }
     }
-
-
 }
-

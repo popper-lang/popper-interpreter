@@ -1,22 +1,26 @@
 use mirage::backend::codegen_llvm::Compiler as LLVMCompiler;
 use mirage::frontend::builder::{BasicBlock, Builder};
 use mirage::frontend::module::Module;
-use mirage::frontend::object::function::*;
 use mirage::frontend::object::label::{Command, LabelBodyInstr, Value};
 use mirage::frontend::object::meta::Flag;
 use mirage::frontend::object::stringify::Stringify;
+use mirage::frontend::object::{function::*, StructValue};
 use mirage::frontend::object::{MirageObject, MirageTypeEnum, MirageValueEnum};
 use std::collections::HashMap;
+mod tag;
+
+use tag::*;
 
 #[derive(Debug, Clone)]
 pub struct Compiler {
     stmts: Vec<popper_ast::Statement>,
-    env: HashMap<String, MirageValueEnum>,
+    env: HashMap<String, Tagged<MirageValueEnum>>,
     current_basic_block: Option<BasicBlock>,
     current_function: Option<FunctionValue>,
     module: Module,
     builder: Builder,
     is_not_loadable: bool,
+    struct_env: HashMap<String, (MirageTypeEnum, popper_ast::StructStmt)>,
 }
 
 impl Compiler {
@@ -30,6 +34,7 @@ impl Compiler {
             current_basic_block: None,
             current_function: None,
             is_not_loadable: false,
+            struct_env: HashMap::new(),
         }
     }
 
@@ -48,6 +53,8 @@ impl Compiler {
             popper_ast::TypeKind::Pointer(t) => {
                 MirageTypeEnum::type_ptr(self.popper_ty_to_mirage_ty(*t)).into()
             }
+            popper_ast::TypeKind::Struct(s) => self.struct_env.get(&s).unwrap().0.clone(),
+            popper_ast::TypeKind::StructInstance(s) => self.struct_env.get(&s).unwrap().0.clone(),
             e => todo!("{:?}", e),
         }
     }
@@ -84,18 +91,30 @@ impl Compiler {
                 self.env.insert(l.name.name, val);
             }
             popper_ast::Statement::Return(r) => {
-                let val = self.compile_expr(*r.expression.unwrap());
+                let val = self.compile_expr(*r.expression.unwrap()).value;
                 let basic_block = self.current_basic_block.as_mut().unwrap();
 
                 basic_block.build_ret(val).unwrap();
             }
             popper_ast::Statement::Assign(a) => {
                 self.is_not_loadable = true;
-                let mut n = self.compile_expr(a.name).expect_register_value().unwrap();
+                let n = self
+                    .compile_expr(a.name)
+                    .value
+                    .expect_register_value()
+                    .unwrap();
                 self.is_not_loadable = false;
-                let v = self.compile_expr(a.value);
+                let v = self.compile_expr(a.value).value;
                 let basic_block = self.current_basic_block.as_mut().unwrap();
                 basic_block.build_store(n, MirageObject::from(v)).unwrap();
+            }
+            popper_ast::Statement::Struct(s) => {
+                let mut fields = Vec::new();
+                for field in s.fields.iter() {
+                    fields.push(self.popper_ty_to_mirage_ty(field.ty.clone()));
+                }
+                let ty = MirageTypeEnum::type_struct(fields);
+                self.struct_env.insert(s.name.clone(), (ty.into(), s));
             }
             e => todo!("{:?}", e),
         }
@@ -115,7 +134,8 @@ impl Compiler {
         let mut fn_value = fn_ty.fn_value(f.name.clone());
 
         for (avalue, aname) in fn_value.get_args().iter().zip(f.arguments.args.iter()) {
-            self.env.insert(aname.name.clone(), avalue.clone());
+            self.env
+                .insert(aname.name.clone(), Tagged::void(avalue.clone()));
         }
 
         self.current_function = Some(fn_value.clone());
@@ -134,13 +154,13 @@ impl Compiler {
         self.builder.build_function(fn_value.clone());
     }
 
-    fn compile_expr(&mut self, expr: popper_ast::Expression) -> MirageValueEnum {
-        match expr {
+    fn compile_expr(&mut self, expr: popper_ast::Expression) -> Tagged<MirageValueEnum> {
+        Tagged::void(match expr {
             popper_ast::Expression::Call(call) => {
                 let args: Vec<_> = call
                     .arguments
                     .iter()
-                    .map(|x| self.compile_expr(x.clone()))
+                    .map(|x| self.compile_expr(x.clone()).value)
                     .collect();
                 let basic_block = self.current_basic_block.as_mut().unwrap();
                 basic_block.build_call(call.name, args).unwrap()
@@ -148,30 +168,27 @@ impl Compiler {
             popper_ast::Expression::Constant(constant) => match constant {
                 popper_ast::Constant::Int(i) => {
                     let ty = MirageTypeEnum::type_int32();
-                    let value = ty.const_value(i.value as i32).to_value_enum();
-                    return value;
+                    ty.const_value(i.value as i32).to_value_enum()
                 }
 
                 popper_ast::Constant::Float(f) => {
                     let ty = MirageTypeEnum::type_float32();
-                    let value = ty.const_value(f.value as f32).to_value_enum();
-                    return value;
+                    ty.const_value(f.value as f32).to_value_enum()
                 }
 
-                popper_ast::Constant::Null(n) => todo!(),
+                popper_ast::Constant::Null(_n) => todo!(),
                 popper_ast::Constant::List(l) => {
                     let mut values = Vec::new();
                     for v in l.value.iter() {
-                        values.push(self.compile_expr(v.clone()));
+                        values.push(self.compile_expr(v.clone()).value);
                     }
-                    if values.len() == 0 {
+                    if values.is_empty() {
                         panic!("A list can't be 0")
                     }
 
                     let ty = values.first().unwrap().get_type();
                     let ty = MirageTypeEnum::type_array(ty, values.len());
-                    let value = ty.const_value(values).to_mirage_value();
-                    return value;
+                    ty.const_value(values).to_mirage_value()
                 }
 
                 popper_ast::Constant::StringLiteral(s) => {
@@ -190,11 +207,10 @@ impl Compiler {
                                 .collect(),
                         )
                         .to_mirage_value();
-                    let value = self.builder.build_global(MirageObject::from(value));
-                    return value;
+                    self.builder.build_global(MirageObject::from(value))
                 }
 
-                popper_ast::Constant::Ident(id) => self.env.get(&id.name).unwrap().clone(),
+                popper_ast::Constant::Ident(id) => return self.env.get(&id.name).unwrap().clone(),
 
                 e => todo!("{:?}", e),
             },
@@ -204,11 +220,11 @@ impl Compiler {
                     return val;
                 }
                 let basic_block = self.current_basic_block.as_mut().unwrap();
-                basic_block.build_ref(val).unwrap()
+                basic_block.build_ref(val.value).unwrap()
             }
             popper_ast::Expression::BinOp(bin_op) => {
-                let l = self.compile_expr(*bin_op.lhs);
-                let r = self.compile_expr(*bin_op.rhs);
+                let l = self.compile_expr(*bin_op.lhs).value;
+                let r = self.compile_expr(*bin_op.rhs).value;
                 let basic_block = self.current_basic_block.as_mut().unwrap();
 
                 match bin_op.op {
@@ -228,11 +244,44 @@ impl Compiler {
                 }
                 let elt = val.get_type().expect_ptr_type().element_ty;
                 let basic_block = self.current_basic_block.as_mut().unwrap();
-                basic_block.build_load(*elt, val).unwrap()
+                basic_block.build_load(*elt, val.value).unwrap()
+            }
+            popper_ast::Expression::StructInstance(s) => {
+                let mut values = Vec::new();
+                for v in s.fields.iter() {
+                    values.push(self.compile_expr(v.value.clone()).value);
+                }
+                let ty = self.struct_env.get(&s.name).unwrap().0.clone();
+                return MirageValueEnum::Struct(StructValue::new(ty.expect_struct_type(), values))
+                    .tag(s.name.clone());
+            }
+            popper_ast::Expression::StructFieldAccess(s) => {
+                let struct_ = self.compile_expr(*s.name);
+                let name = struct_.tag;
+                let ast_struct = self.struct_env.get(&name).unwrap().1.clone();
+                let struct_ = struct_.value;
+                let struct_ty = struct_.get_type().expect_struct_type();
+
+                let index = ast_struct
+                    .fields
+                    .iter()
+                    .position(|x| x.name == s.field)
+                    .unwrap();
+
+                let field_ty = struct_ty.fields[index].clone();
+                let index = MirageTypeEnum::type_int32()
+                    .const_value(index as i32)
+                    .to_value_enum();
+                let basic_block = self.current_basic_block.as_mut().unwrap();
+                let r = basic_block
+                    .build_getelementptr(field_ty, struct_ty.into(), struct_, vec![index])
+                    .unwrap();
+
+                r
             }
 
             _ => todo!(),
-        }
+        })
     }
 
     pub fn print_to_string(&self) -> String {
@@ -243,8 +292,8 @@ impl Compiler {
             .collect()
     }
 
-    pub fn compile_to_llvm(&mut self) -> String {
-        let mut compiler = LLVMCompiler::new(self.builder.asts.clone()).unwrap();
+    pub fn compile_to_llvm(&mut self, debug: bool) -> String {
+        let mut compiler = LLVMCompiler::new(self.builder.asts.clone(), debug).unwrap();
 
         compiler.compile();
 
