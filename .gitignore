@@ -1,6 +1,5 @@
-target/
 .idea
 .DS_Store
-target/
-Cargo.lock/
-target_popper/
+target
+Cargo.lock
+target_popper

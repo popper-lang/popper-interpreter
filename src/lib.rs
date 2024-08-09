@@ -1,7 +1,7 @@
 use std::process::Output;
 
 use popper_ast::Statement;
-use popper_codegen::Compiler;
+use popper_codegen::{output::Output as CompilerOutput, Compiler};
 use popper_parser::parser::parse;
 // use popper_codegen::compiler::Compiler;
 use popper_error::generate_color;
@@ -55,16 +55,9 @@ pub fn check_program(ast: Vec<Statement>, source: &str, file_name: &str) -> bool
 //     (compiler.build(), compiler.get_used_cdylibs())
 // }
 
-pub fn compile_to_mirage(ast: Vec<Statement>, file_name: &str) -> String {
+pub fn compile(ast: Vec<Statement>, file_name: &str, debug: bool) -> CompilerOutput {
     let mut compiler = Compiler::new(ast, file_name);
-    compiler.compile();
-    compiler.print_to_string()
-}
-
-pub fn compile_to_llvm(ast: Vec<Statement>, file_name: &str, debug: bool) -> String {
-    let mut compiler = Compiler::new(ast, file_name);
-    compiler.compile();
-    compiler.compile_to_llvm(debug)
+    compiler.compile(debug)
 }
 
 pub fn execute_llvm(llvm: String, file_name: String, target_path: String, debug: bool) {

@@ -9,6 +9,7 @@ struct Hello {
 
 func main(): int {
     let h =   init Hello {a = 1, b = 2};
-    printf("%d", {h}.a);
+    {h}.a = {h}.b + 1;
+    printf("b = %d", {h}.a);
     return 0;
 }

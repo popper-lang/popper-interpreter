@@ -2,7 +2,7 @@
 use clap::{Parser, Subcommand};
 use popper_compiler::check_program;
 use popper_compiler::get_ast;
-use popper_compiler::{compile_to_llvm, compile_to_mirage, execute_llvm};
+use popper_compiler::{compile, execute_llvm};
 use std::io::Write;
 
 #[derive(Parser, Debug)]
@@ -119,7 +119,7 @@ fn main() {
             let ast = get_ast(content.as_str(), string_file);
             if let Some(a) = ast {
                 if check_program(a.clone(), content.as_str(), string_file) {
-                    let res = compile_to_mirage(a, string_file);
+                    let res = compile(a, string_file, false).print_to_string();
                     if let Some(out) = output {
                         std::fs::File::open(out)
                             .expect("File Not Found")
@@ -145,7 +145,7 @@ fn main() {
             let ast = get_ast(content.as_str(), string_file);
             if let Some(a) = ast {
                 if check_program(a.clone(), content.as_str(), string_file) {
-                    let res = compile_to_llvm(a, string_file, debug);
+                    let res = compile(a, string_file, debug).print_llvm_to_string();
                     if let Some(out) = output {
                         std::fs::File::open(out)
                             .expect("File Not Found")
@@ -171,7 +171,7 @@ fn main() {
             let ast = get_ast(content.as_str(), string_file);
             if let Some(a) = ast {
                 if check_program(a.clone(), content.as_str(), string_file) {
-                    let res = compile_to_llvm(a, string_file, debug);
+                    let res = compile(a, string_file, debug).print_llvm_to_string();
                     let target = target.unwrap_or(std::path::PathBuf::from("./target_popper"));
                     execute_llvm(
                         res,

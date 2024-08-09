@@ -7,6 +7,7 @@ use mirage::frontend::object::stringify::Stringify;
 use mirage::frontend::object::{function::*, StructValue};
 use mirage::frontend::object::{MirageObject, MirageTypeEnum, MirageValueEnum};
 use std::collections::HashMap;
+pub mod output;
 mod tag;
 
 use tag::*;
@@ -59,10 +60,11 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self) {
+    pub fn compile(&mut self, debug: bool) -> output::Output {
         for stmt in self.stmts.clone() {
             self.compile_statement(stmt);
         }
+        self.output(debug)
     }
 
     pub fn compile_statement(&mut self, stmt: popper_ast::Statement) {
@@ -252,8 +254,18 @@ impl Compiler {
                     values.push(self.compile_expr(v.value.clone()).value);
                 }
                 let ty = self.struct_env.get(&s.name).unwrap().0.clone();
-                return MirageValueEnum::Struct(StructValue::new(ty.expect_struct_type(), values))
-                    .tag(s.name.clone());
+                let val =
+                    MirageValueEnum::Struct(StructValue::new(ty.expect_struct_type(), values));
+                let basic_block = self.current_basic_block.as_mut().unwrap();
+                let mut reg = basic_block
+                    .build_const(val)
+                    .unwrap()
+                    .expect_register_value()
+                    .unwrap();
+
+                reg.add_flag(Flag::not_loadable());
+
+                return Into::<MirageValueEnum>::into(reg).tag(s.name.clone());
             }
             popper_ast::Expression::StructFieldAccess(s) => {
                 let struct_ = self.compile_expr(*s.name);
@@ -269,15 +281,24 @@ impl Compiler {
                     .unwrap();
 
                 let field_ty = struct_ty.fields[index].clone();
+                let zero = MirageTypeEnum::type_int32().const_value(0).to_value_enum();
                 let index = MirageTypeEnum::type_int32()
                     .const_value(index as i32)
                     .to_value_enum();
                 let basic_block = self.current_basic_block.as_mut().unwrap();
-                let r = basic_block
-                    .build_getelementptr(field_ty, struct_ty.into(), struct_, vec![index])
+                let mut memory = basic_block
+                    .build_getelementptr(field_ty, struct_ty.into(), struct_, vec![zero, index])
+                    .unwrap()
+                    .expect_register_value()
                     .unwrap();
 
-                r
+                if self.is_not_loadable {
+                    memory.add_flag(Flag::not_loadable());
+                    memory
+                } else {
+                    memory
+                }
+                .into()
             }
 
             _ => todo!(),
@@ -292,11 +313,9 @@ impl Compiler {
             .collect()
     }
 
-    pub fn compile_to_llvm(&mut self, debug: bool) -> String {
+    pub fn output(&mut self, debug: bool) -> output::Output {
         let mut compiler = LLVMCompiler::new(self.builder.asts.clone(), debug).unwrap();
-
         compiler.compile();
-
-        compiler.print_to_string()
+        output::Output::new(self.clone(), compiler)
     }
 }
