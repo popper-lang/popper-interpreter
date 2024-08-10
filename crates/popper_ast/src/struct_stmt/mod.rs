@@ -67,11 +67,17 @@ impl StructFieldInstance {
 pub struct StructFieldAccess {
     pub name: Box<Expression>,
     pub field: String,
+    pub is_ptr: bool,
     pub span: Span,
 }
 
 impl StructFieldAccess {
-    pub fn new(name: Expression, field: String, span: Span) -> Self {
-        Self { name: Box::new(name), field, span }
+    pub fn new(name: Expression, field: String, is_ptr: bool, span: Span) -> Self {
+        Self {
+            name: Box::new(name),
+            field,
+            is_ptr,
+            span,
+        }
     }
 }

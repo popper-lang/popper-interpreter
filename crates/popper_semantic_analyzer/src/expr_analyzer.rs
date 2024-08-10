@@ -45,9 +45,7 @@ impl ExprAnalyzer {
             }
             TypeKind::Unit => ValueFlag::None,
             TypeKind::Pointer(ptr) => ValueFlag::Pointer(Box::new(self.get_type(*ptr))),
-            TypeKind::Struct(name) => {
-                ValueFlag::Struct(name)
-            }
+            TypeKind::Struct(name) => ValueFlag::Struct(name),
             _ => unimplemented!(),
         }
     }
@@ -66,9 +64,7 @@ impl ExprVisitor for ExprAnalyzer {
                 .clone()),
             Constant::Bool(bool) => Ok(SymbolFlags::new(bool.span()).set_boolean().clone()),
             Constant::Ident(ref ident) => match self.env.get_variable(&ident.name) {
-                Some(v) => Ok({
-                    v.value.clone()
-                }),
+                Some(v) => Ok({ v.value.clone() }),
                 None => {
                     let name_candidates = self.env.get_all_variables_name();
 
@@ -362,7 +358,13 @@ impl ExprVisitor for ExprAnalyzer {
     ) -> Result<Self::Output, Self::Error> {
         let struct_model = self.visit_expr(*struct_field_access.name.clone())?;
         let mut struct_model_value = struct_model.get_value().unwrap();
-        if struct_model.is_pointer() {
+        if struct_field_access.is_ptr {
+            if !struct_model.is_pointer() {
+                return Err(Box::new(TypeMismatch::new(
+                    (struct_field_access.span, "pointer".to_string()),
+                    (struct_field_access.span, struct_model_value.to_string()),
+                )));
+            }
             struct_model_value = struct_model.get_minor_type().unwrap();
         }
         if let ValueFlag::Struct(ref name) = struct_model_value {

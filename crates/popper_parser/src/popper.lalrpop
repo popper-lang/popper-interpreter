@@ -364,11 +364,15 @@ StructInstanceExpr: Expression = {
     }
 }
 
-FieldAccessSyn: (Expression, Ident) = {
-    "{" <e:Expr> "}" "." <t:Ident> => {
-        (e, t)
+FieldAccessSyn: (Expression, Ident, bool) = {
+    <e:FieldAccess> "." <t:Ident> => {
+        (e, t, false)
+    },
+    <e:FieldAccess> "->" <t:Ident> => {
+      (e, t, true)
     }
 }
+
 
 FieldAccessExpr: Expression = {
     <t:Span<FieldAccessSyn>> => {
@@ -376,6 +380,7 @@ FieldAccessExpr: Expression = {
             StructFieldAccess::new(
                 t.1.0,
                 t.1.1.name,
+                t.1.2,
                 t.0
             )
         )
@@ -466,6 +471,11 @@ Cmp: Expression = {
     Ref
 };
 
+FieldAccess: Expression = {
+    FieldAccessExpr,
+    StructInstance
+}
+
 Ref: Expression = {
     RefExpr,
     Deref
@@ -497,10 +507,7 @@ Call: Expression = {
     FieldAccess
 }
 
-FieldAccess: Expression = {
-    FieldAccessExpr,
-    StructInstance
-}
+
 
 StructInstance: Expression = {
     StructInstanceExpr,

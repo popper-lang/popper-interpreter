@@ -22,6 +22,7 @@ pub struct Compiler {
     builder: Builder,
     is_not_loadable: bool,
     struct_env: HashMap<String, (MirageTypeEnum, popper_ast::StructStmt)>,
+    shoulb_be_stored: bool,
 }
 
 impl Compiler {
@@ -36,6 +37,7 @@ impl Compiler {
             current_function: None,
             is_not_loadable: false,
             struct_env: HashMap::new(),
+            shoulb_be_stored: false,
         }
     }
 
@@ -90,7 +92,14 @@ impl Compiler {
             }
             popper_ast::Statement::Let(l) => {
                 let val = self.compile_expr(l.value);
-                self.env.insert(l.name.name, val);
+                if val.value.is_const() {
+                    let basic_block = self.current_basic_block.as_mut().unwrap();
+                    let reg = basic_block.build_const(val.value).unwrap();
+                    self.env
+                        .insert(l.name.name.clone(), reg.tag(l.name.name.clone()));
+                } else {
+                    self.env.insert(l.name.name.clone(), val);
+                }
             }
             popper_ast::Statement::Return(r) => {
                 let val = self.compile_expr(*r.expression.unwrap()).value;
@@ -217,12 +226,13 @@ impl Compiler {
                 e => todo!("{:?}", e),
             },
             popper_ast::Expression::Reference(r) => {
+                self.shoulb_be_stored = true;
                 let val = self.compile_expr(*r.expr);
                 if self.is_not_loadable {
                     return val;
                 }
                 let basic_block = self.current_basic_block.as_mut().unwrap();
-                basic_block.build_ref(val.value).unwrap()
+                return basic_block.build_ref(val.value).unwrap().tag(val.tag);
             }
             popper_ast::Expression::BinOp(bin_op) => {
                 let l = self.compile_expr(*bin_op.lhs).value;
@@ -272,7 +282,15 @@ impl Compiler {
                 let name = struct_.tag;
                 let ast_struct = self.struct_env.get(&name).unwrap().1.clone();
                 let struct_ = struct_.value;
-                let struct_ty = struct_.get_type().expect_struct_type();
+                let struct_ty = if s.is_ptr {
+                    struct_
+                        .get_type()
+                        .expect_ptr_type()
+                        .element_ty
+                        .expect_struct_type()
+                } else {
+                    struct_.get_type().expect_struct_type()
+                };
 
                 let index = ast_struct
                     .fields
