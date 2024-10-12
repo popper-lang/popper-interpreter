@@ -7,10 +7,13 @@ struct Hello {
   b = int
 }
 
+func sum(a: struct Hello): int {
+  return a.a + a.b;
+}
+
 func main(): int {
-    let h = init Hello {a = 1, b = 2};
-    let k = ref h;
-    k->a = 16;
-    printf("h.a = %d", h.a);
+    let h = init Hello { a = 1, b = 2};
+    sum(h);
+    printf("h = %d", h);
     return 0;
 }

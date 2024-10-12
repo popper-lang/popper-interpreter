@@ -41,8 +41,8 @@ impl Compiler {
         }
     }
 
-    pub fn popper_ty_to_mirage_ty(&self, ty: popper_ast::Type) -> MirageTypeEnum {
-        match ty.type_kind {
+    pub fn popper_ty_to_mirage_ty(&self, ty: popper_ast::Type) -> Tagged<MirageTypeEnum> {
+        Tagged::void(match ty.type_kind {
             popper_ast::TypeKind::Int => MirageTypeEnum::type_int32().into(),
             popper_ast::TypeKind::Float => MirageTypeEnum::type_float32().into(),
             popper_ast::TypeKind::String(length) => {
@@ -51,15 +51,19 @@ impl Compiler {
             }
             popper_ast::TypeKind::Bool => MirageTypeEnum::type_int8().into(),
             popper_ast::TypeKind::List(t, u) => {
-                MirageTypeEnum::type_array(self.popper_ty_to_mirage_ty(*t), u).into()
+                MirageTypeEnum::type_array(self.popper_ty_to_mirage_ty(*t).value, u).into()
             }
             popper_ast::TypeKind::Pointer(t) => {
-                MirageTypeEnum::type_ptr(self.popper_ty_to_mirage_ty(*t)).into()
+                MirageTypeEnum::type_ptr(self.popper_ty_to_mirage_ty(*t).value).into()
             }
-            popper_ast::TypeKind::Struct(s) => self.struct_env.get(&s).unwrap().0.clone(),
-            popper_ast::TypeKind::StructInstance(s) => self.struct_env.get(&s).unwrap().0.clone(),
+            popper_ast::TypeKind::Struct(s) => {
+                return self.struct_env.get(&s).unwrap().0.clone().tag(s)
+            }
+            popper_ast::TypeKind::StructInstance(s) => {
+                return self.struct_env.get(&s).unwrap().0.clone().tag(s)
+            }
             e => todo!("{:?}", e),
-        }
+        })
     }
 
     pub fn compile(&mut self, debug: bool) -> output::Output {
@@ -83,9 +87,9 @@ impl Compiler {
                         .arguments
                         .args
                         .iter()
-                        .map(|x| self.popper_ty_to_mirage_ty(x.ty.clone()))
+                        .map(|x| self.popper_ty_to_mirage_ty(x.ty.clone()).value)
                         .collect();
-                    let return_ty = self.popper_ty_to_mirage_ty(sign.return_type.clone());
+                    let return_ty = self.popper_ty_to_mirage_ty(sign.return_type.clone()).value;
                     let fn_ty = FunctionType::new(args, return_ty, sign.is_var_args);
                     self.builder.build_extern(sign.name.clone(), fn_ty);
                 }
@@ -122,7 +126,7 @@ impl Compiler {
             popper_ast::Statement::Struct(s) => {
                 let mut fields = Vec::new();
                 for field in s.fields.iter() {
-                    fields.push(self.popper_ty_to_mirage_ty(field.ty.clone()));
+                    fields.push(self.popper_ty_to_mirage_ty(field.ty.clone()).value);
                 }
                 let ty = MirageTypeEnum::type_struct(fields);
                 self.struct_env.insert(s.name.clone(), (ty.into(), s));
@@ -133,20 +137,27 @@ impl Compiler {
 
     pub fn compile_function(&mut self, f: &popper_ast::Function) {
         let mut args = Vec::new();
+        let mut tags = Vec::new();
 
         for arg in f.arguments.args.iter() {
-            args.push(self.popper_ty_to_mirage_ty(arg.ty.clone()));
+            let ty = self.popper_ty_to_mirage_ty(arg.ty.clone());
+            args.push(ty.value);
+            tags.push(ty.tag);
         }
 
-        let return_ty = self.popper_ty_to_mirage_ty(f.returntype.clone());
+        let return_ty = self.popper_ty_to_mirage_ty(f.returntype.clone()).value;
 
         let fn_ty = FunctionType::new(args, return_ty, f.is_var_args);
 
         let mut fn_value = fn_ty.fn_value(f.name.clone());
 
-        for (avalue, aname) in fn_value.get_args().iter().zip(f.arguments.args.iter()) {
-            self.env
-                .insert(aname.name.clone(), Tagged::void(avalue.clone()));
+        for ((avalue, aname), tag) in fn_value
+            .get_args()
+            .iter()
+            .zip(f.arguments.args.iter())
+            .zip(tags)
+        {
+            self.env.insert(aname.name.clone(), avalue.clone().tag(tag));
         }
 
         self.current_function = Some(fn_value.clone());
@@ -329,6 +340,10 @@ impl Compiler {
             .iter()
             .map(|x| x.to_string() + "\n")
             .collect()
+    }
+
+    pub fn dump(&self) {
+        println!("{}", self.print_to_string());
     }
 
     pub fn output(&mut self, debug: bool) -> output::Output {
